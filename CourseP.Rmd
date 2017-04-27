@@ -1,0 +1,81 @@
+---
+title: 'Practical ML Course Project: Prediction Assignment'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE) # echo is set true, to produce the code in the report
+```
+
+## Summary
+
+In this project, our goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to identify how well a task is done by people. More specifically, the goal of your project is to predict the manner in which people do the exercise, which is the "classe" variable in the training set. Other variables could be used as predictors. Our goal is to use data from accelerometers of 6 participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The data for this project come from: http://groupware.les.inf.puc-rio.br/har.
+
+## Load the required packages
+```{r, message = FALSE, warning = FALSE, cache = T }
+require(caret)
+require(randomForest)
+require(rpart)
+require(rpart.plot)
+require(rattle)
+```
+
+## Load training data
+```{r readdata, cache = T}
+trData <- read.csv(file.path(getwd(), "pml-training.csv"), na.strings = c("#DIV/0!", "NA", "") )
+tsData <- read.csv(file.path(getwd(), "pml-testing.csv"), na.strings = c("#DIV/0!", "NA", "") )
+```
+`Classe` variable is the outcome to be predicted, a 5-level {A-E} factor variable. `A` corresponds to a correct procedure, where the other 4 classes are the mistakes. Set seed for reproducibility of the results.
+
+## Data cleaning
+(1) Removing the variables with small variance. 2. Removing the variables with more than 50% NA values. 3. Removing the first 6 variables related to the acquisition details.
+```{r cleans, cache = T}
+dim(trData)
+nz_ind <- nearZeroVar(trData, saveMetrics = T)
+trData <- trData[, !nz_ind$nzv]; tsData <- tsData[, !nz_ind$nzv]
+na_ind <- sapply(colnames(trData), function(x) ifelse(sum(is.na(trData[, x] )) >= 0.5*nrow(trData), T, F  ) )
+trData <- trData[, !na_ind]; tsData <- tsData[, !na_ind]
+trData <- trData[, -(1:6)]; tsData <- tsData[, -(1:6)]
+dim(trData) # perfectly reduced dimension
+```
+
+## Data Slicing
+
+We partition the training data to training (75%) and probing (25%) datasets to reduce overfitting and adjust the model better for the final test set. Scaling and centering is performed on the data and PCA is also used to pick the proper predictors.
+```{r cv, cache = T}
+set.seed(1) 
+ppObj <- preProcess(trData[, -53]+1 , method = c("scale", "center", "pca")) # preprocess object
+trPC <- predict(ppObj, trData[, -53]+1) # compute the PCA components and scaled data
+trPC <- cbind(trPC, classe = trData$classe)
+tsPC <- predict(ppObj, tsData+1) # compute PCAs of test data
+inTr <- createDataPartition(y = trData$classe, p = 0.75, list = F)
+trTrain <- trPC[inTr, ] # training segment
+trTest <- trPC[-inTr, ] # probing(testing) segment
+# repeat for the test set:
+tsData <- tsData[, -length(tsData)] # removing problem_id variable
+testPC <- predict(ppObj, tsData+1) # compute PCAs of training data
+```
+## Analyzing the predictive models
+
+Desicion trees and random forests are used as predictive models. The results of them are compared using the confustion matrix and the model with better accuracy is chosen as the predictor.
+
+```{r mod, cache = T}
+dtModel <- rpart(classe ~ ., data = trTrain, method = "class")
+fancyRpartPlot(dtModel) # plotting the tree
+rfModel <- randomForest(classe ~ ., data = trTrain, method = "class")
+dtPred <- predict(dtModel, trTest, type = "class", na.action = na.pass)
+rfPred <- predict(rfModel, trTest, type = "class", na.action = na.pass)
+confusionMatrix(dtPred, trTest$classe)
+confusionMatrix(rfPred, trTest$classe)
+```
+
+## Generating the results
+
+Random forest results in a much higher accuracy of 97.96%, we therefor use this model to predict the labels for the test set. In the following we generate the predicted labels:
+
+```{r res, cache = T}
+finPred <- predict(rfModel, testPC, type = "class", na.action = na.pass)
+finPred
+```
