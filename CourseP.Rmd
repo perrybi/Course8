@@ -62,6 +62,9 @@ testPC <- predict(ppObj, tsData+1) # compute PCAs of training data
 Desicion trees and random forests are used as predictive models. The results of them are compared using the confustion matrix and the model with better accuracy is chosen as the predictor.
 
 ```{r mod, cache = T}
+# We can also perform cross validation on the fly:
+# tc <- trainControl(method = "cv", number = 10, allowParallel = TRUE)
+# dtModel <- train(classe ~ .,data = trTrain, method="rpart",trControl = tc)
 dtModel <- rpart(classe ~ ., data = trTrain, method = "class")
 fancyRpartPlot(dtModel) # plotting the tree
 rfModel <- randomForest(classe ~ ., data = trTrain, method = "class")
